@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bouncing Ball Game - With Secret Upgrade & Admin Panel</title>
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      height: 100vh;
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f0f0f0;
+      padding: 10px 0;
+    }
+    canvas {
+      background: white;
+      border: 1px solid #ccc;
+      cursor: pointer;
+    }
+    .info {
+      margin-top: 10px;
+      text-align: center;
+    }
+    button {
+      margin: 5px 5px 0 5px;
+      padding: 6px 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    #leaderboard {
+      margin-top: 20px;
+      width: 300px;
+      background: white;
+      border: 1px solid #ccc;
+      padding: 10px;
+      text-align: left;
+      font-size: 14px;
+    }
+    #leaderboard h3 {
+      margin-top: 0;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    #leaderboard ul {
+      list-style: none;
+      padding-left: 0;
+      margin: 0;
+    }
+    #leaderboard li {
+      padding: 3px 0;
+      border-bottom: 1px solid #eee;
+    }
+    #adminPanel {
+      display: none;
+      margin-top: 20px;
+      background: #ffe;
+      border: 1px solid #ccc;
+      padding: 10px;
+      width: 320px;
+      text-align: center;
+    }
+    #adminPanel button {
+      margin: 5px 5px 5px 5px;
+      width: 140px;
+    }
+    #adminLogin {
+      margin-top: 15px;
+      text-align: center;
+    }
+    #adminLogin input {
+      padding: 6px;
+      font-size: 14px;
+      width: 160px;
+    }
+    #adminLogin button {
+      padding: 6px 12px;
+      font-size: 14px;
+      cursor: pointer;
+      margin-left: 5px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="bounceCanvas" width="400" height="300" title="Click me for temporary faster fall!"></canvas>
+  <div class="info">
+    <p>Points: <span id="points">0</span></p>
+    <button id="ppbUpgradeBtn">Points/ Bounce Upgrade (Cost: 20)</button>
+    <button id="speedUpgradeBtn">Speed Upgrade (Cost: 40)</button>
+    <button id="addBallBtn">Add Ball Upgrade (Cost: 100)</button>
+    <button id="superUpgradeBtn" style="display: none;">Super Upgrade (Cost: 5)</button>
+  </div>
+
+  <div id="leaderboard">
+    <h3>Leaderboard</h3>
+    <ul id="leaderboardList"></ul>
+  </div>
+
+  <!-- Admin login panel -->
+  <div id="adminLogin">
+    <input type="password" id="adminPassword" placeholder="Enter admin password" />
+    <button id="adminLoginBtn">Login</button>
+  </div>
+
+  <!-- Admin panel -->
+  <div id="adminPanel">
+    <h3>🛠 Admin Panel</h3>
+    <button onclick="addPoints(1000)">+1000 Points</button>
+    <button onclick="resetUpgrades()">Reset Upgrades</button>
+    <button onclick="spawnBalls(10)">Spawn 10 Balls</button>
+    <button onclick="freezeBots()">Freeze All Bots</button>
+    <button onclick="logBotStats()">Log Bot Stats</button>
+    <button onclick="logoutAdmin()" style="margin-top: 10px; background: #f44336; color: white;">Logout Admin</button>
+  </div>
+
+<script>
+  const canvas = document.getElementById("bounceCanvas");
+  const ctx = canvas.getContext("2d");
+  const pointsEl = document.getElementById("points");
+  const ppbUpgradeBtn = document.getElementById("ppbUpgradeBtn");
+  const speedUpgradeBtn = document.getElementById("speedUpgradeBtn");
+  const addBallBtn = document.getElementById("addBallBtn");
+  const superUpgradeBtn = document.getElementById("superUpgradeBtn");
+  const leaderboardList = document.getElementById("leaderboardList");
+  const adminPanel = document.getElementById("adminPanel");
+  const adminLoginDiv = document.getElementById("adminLogin");
+  const adminPasswordInput = document.getElementById("adminPassword");
+  const adminLoginBtn = document.getElementById("adminLoginBtn");
+
+  let points = 0;
+  let pointsPerBounce = 1;
+  let ppbUpgradeCost = 20;
+  let speedUpgradeCost = 40;
+  let addBallCost = 100;
+
+  let baseGravity = 0.05;
+  let gravity = baseGravity;
+  let bounceStrength = -2;
+  let gravityBoostActive = false;
+  let userFrozen = true; // Start frozen for 5 seconds
+
+  let balls = [{
+    x: 200,
+    y: 150,
+    vy: bounceStrength
+  }];
+
+  class Bot {
+    constructor(name) {
+      this.name = name;
+      this.points = 0;
+      this.pointsPerBounce = 1;
+      this.ppbUpgradeCost = 10;
+      this.speedUpgradeCost = 20;
+      this.addBallCost = 50;
+      this.baseGravity = 0.05;
+      this.gravity = this.baseGravity;
+      this.bounceStrength = -2;
+      this.gravityBoostActive = false;
+
+      this.balls = [{
+        x: Math.random() * (canvas.width - 30) + 15,
+        y: 150,
+        vy: this.bounceStrength
+      }];
+
+      this.lastClickTime = 0;
+      this.clickCooldown = 100;
+    }
+
+    updatePhysics() {
+      this.balls.forEach(ball => {
+        ball.y += ball.vy;
+        ball.vy += this.gravity;
+
+        if (ball.y > canvas.height - 15) {
+          ball.y = canvas.height - 15;
+          ball.vy = this.bounceStrength;
+          this.points += this.pointsPerBounce;
+
+          if (this.gravityBoostActive) {
+            this.gravity = this.baseGravity;
+            this.gravityBoostActive = false;
+          }
+        }
+      });
+    }
+
+    tryClick(currentTime) {
+      if (currentTime - this.lastClickTime > this.clickCooldown) {
+        if (!this.gravityBoostActive) {
+          this.gravity *= 1.7;
+          this.gravityBoostActive = true;
+        }
+        this.lastClickTime = currentTime;
+      }
+    }
+
+    tryBuyUpgrades() {
+      while (this.points >= this.addBallCost && this.balls.length < 10) {
+        this.buyAddBalls();
+      }
+      while (this.points >= this.ppbUpgradeCost && this.pointsPerBounce < 15) {
+        this.buyPPBUpgrade();
+      }
+      while (this.points >= this.speedUpgradeCost && this.baseGravity < 1.5) {
+        this.buySpeedUpgrade();
+      }
+    }
+
+    buyPPBUpgrade() {
+      this.points -= this.ppbUpgradeCost;
+      this.pointsPerBounce += 1;
+      this.ppbUpgradeCost += 10;
+    }
+
+    buySpeedUpgrade() {
+      this.points -= this.speedUpgradeCost;
+      this.baseGravity *= 2;
+      this.gravity = this.baseGravity;
+      this.speedUpgradeCost += 20;
+    }
+
+    buyAddBalls() {
+      if (this.points >= this.addBallCost && this.balls.length < 10) {
+        this.points -= this.addBallCost;
+        this.addBallCost += 50;
+        const newX = Math.random() * (canvas.width - 30) + 15;
+        this.balls.push({
+          x: newX,
+          y: 150,
+          vy: this.bounceStrength
+        });
+      }
+    }
+  }
+
+  const bots = [];
+  for (let i = 1; i <= 10; i++) {
+    bots.push(new Bot("Bot" + i));
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    balls.forEach(ball => {
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, 15, 0, Math.PI * 2);
+      ctx.fillStyle = "#3498db";
+      ctx.fill();
+
+      if (!userFrozen) {
+        ball.y += ball.vy;
+        ball.vy += gravity;
+
+        if (ball.y > canvas.height - 15) {
+          ball.y = canvas.height - 15;
+          ball.vy = bounceStrength;
+          points += pointsPerBounce;
+          pointsEl.textContent = points;
+
+          if (gravityBoostActive) {
+            gravity = baseGravity;
+            gravityBoostActive = false;
+          }
+
+          updateUpgradeButtons();
+        }
+      }
+    });
+
+    const now = performance.now();
+    bots.forEach(bot => {
+      bot.balls.forEach(ball => {
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, 15, 0, Math.PI * 2);
+        ctx.fillStyle = "#e74c3c";
+        ctx.fill();
+      });
+
+      bot.updatePhysics();
+      bot.tryClick(now);
+      bot.tryBuyUpgrades();
+    });
+
+    updateLeaderboard();
+    requestAnimationFrame(draw);
+  }
+
+  function updateUpgradeButtons() {
+    ppbUpgradeBtn.disabled = points < ppbUpgradeCost || userFrozen;
+    speedUpgradeBtn.disabled = points < speedUpgradeCost || userFrozen;
+    addBallBtn.disabled = points < addBallCost || userFrozen;
+    superUpgradeBtn.disabled = points < 5 || userFrozen;
+  }
+
+  ppbUpgradeBtn.addEventListener("click", () => {
+    if (points >= ppbUpgradeCost && !userFrozen) {
+      points -= ppbUpgradeCost;
+      pointsPerBounce += 1;
+      ppbUpgradeCost += 20;
+      ppbUpgradeBtn.textContent = `Points/ Bounce Upgrade (Cost: ${ppbUpgradeCost})`;
+      pointsEl.textContent = points;
+      updateUpgradeButtons();
+    }
+  });
+
+  speedUpgradeBtn.addEventListener("click", () => {
+    if (points >= speedUpgradeCost && !userFrozen) {
+      points -= speedUpgradeCost;
+      baseGravity *= 2;
+      gravity = baseGravity;
+      speedUpgradeCost += 40;
+      speedUpgradeBtn.textContent = `Speed Upgrade (Cost: ${speedUpgradeCost})`;
+      pointsEl.textContent = points;
+      updateUpgradeButtons();
+    }
+  });
+
+  addBallBtn.addEventListener("click", () => {
+    if (points >= addBallCost && !userFrozen) {
+      points -= addBallCost;
+      addBallCost += 100;
+      addBallBtn.textContent = `Add Ball Upgrade (Cost: ${addBallCost})`;
+      const newX = Math.random() * (canvas.width - 30) + 15;
+      balls.push({
+        x: newX,
+        y: 150,
+        vy: bounceStrength
+      });
+      pointsEl.textContent = points;
+      updateUpgradeButtons();
+    }
+  });
+
+  canvas.addEventListener("click", () => {
+    if (!gravityBoostActive && !userFrozen) {
+      gravity *= 1.7;
+      gravityBoostActive = true;
+    }
+  });
+
+  // Secret reveal key: Shift + U
+  document.addEventListener("keydown", (e) => {
+    if (e.shiftKey && e.key === "U") {
+      superUpgradeBtn.style.display = "inline-block";
+    }
+  });
+
+  // Super upgrade logic
+  superUpgradeBtn.addEventListener("click", () => {
+    if (points >= 5 && !userFrozen) {
+      points -= 5;
+      pointsPerBounce += 1;
+      baseGravity *= 2;
+      gravity = baseGravity;
+      pointsEl.textContent = points;
+      updateUpgradeButtons();
+    }
+  });
+
+  // Admin password login system
+  const ADMIN_PASSWORD = "rizz";
+
+  adminLoginBtn.addEventListener("click", () => {
+    if (adminPasswordInput.value === ADMIN_PASSWORD) {
+      adminPanel.style.display = "block";
+      adminLoginDiv.style.display = "none";
+      adminPasswordInput.value = "";
+      alert("Admin logged in!");
+    } else {
+      alert("Incorrect password!");
+      adminPasswordInput.value = "";
+    }
+  });
+
+  function logoutAdmin() {
+    adminPanel.style.display = "none";
+    adminLoginDiv.style.display = "block";
+  }
+
+  // Admin panel functions
+  function addPoints(amount) {
+    points += amount;
+    pointsEl.textContent = points;
+    updateUpgradeButtons();
+  }
+
+  function resetUpgrades() {
+    pointsPerBounce = 100000000000000000000000000000000000000000000000000000000000000000000000000;
+    ppbUpgradeCost = 20;
+    baseGravity = 0.05;
+    gravity = baseGravity;
+    speedUpgradeCost = 40;
+    addBallCost = 100;
+    balls = [{
+      x: 200,
+      y: 150,
+      vy: bounceStrength
+    }];
+    points = 0;
+    pointsEl.textContent = points;
+    ppbUpgradeBtn.textContent = `Points/ Bounce Upgrade (Cost: ${ppbUpgradeCost})`;
+    speedUpgradeBtn.textContent = `Speed Upgrade (Cost: ${speedUpgradeCost})`;
+    addBallBtn.textContent = `Add Ball Upgrade (Cost: ${addBallCost})`;
+    updateUpgradeButtons();
+  }
+
+  function spawnBalls(num) {
+    for (let i = 0; i < num; i++) {
+      if (balls.length < 20) { // max 20 balls for performance
+        balls.push({
+          x: Math.random() * (canvas.width - 30) + 15,
+          y: 150,
+          vy: bounceStrength
+        });
+      }
+    }
+  }
+
+  let botsFrozen = false;
+  function freezeBots() {
+    botsFrozen = !botsFrozen;
+    bots.forEach(bot => {
+      if (botsFrozen) {
+        bot.gravity = 0;
+        bot.balls.forEach(ball => ball.vy = 0);
+      } else {
+        bot.gravity = bot.baseGravity;
+        bot.balls.forEach(ball => ball.vy = bot.bounceStrength);
+      }
+    });
+    alert(botsFrozen ? "Bots frozen!" : "Bots unfrozen!");
+  }
+
+  function logBotStats() {
+    console.log("Bots stats:");
+    bots.forEach(bot => {
+      console.log(`${bot.name} - Points: ${bot.points}, Balls: ${bot.balls.length}`);
+    });
+    alert("Bot stats logged to console.");
+  }
+
+  // Leaderboard including you
+  function updateLeaderboard() {
+    // Include you plus bots
+    const players = [{ name: "You", points }].concat(bots.map(bot => ({
+      name: bot.name,
+      points: bot.points
+    })));
+
+    players.sort((a, b) => b.points - a.points);
+
+    leaderboardList.innerHTML = "";
+
+    players.slice(0, 10).forEach(player => {
+      const li = document.createElement("li");
+      li.textContent = `${player.name}: ${player.points}`;
+      leaderboardList.appendChild(li);
+    });
+  }
+
+  // Unfreeze user after 5 seconds on start
+  setTimeout(() => {
+    userFrozen = false;
+    updateUpgradeButtons();
+    alert("You are now unfrozen! Enjoy the game.");
+  }, 5000);
+
+  updateUpgradeButtons();
+  draw();
+</script>
+</body>
+</html>
+
